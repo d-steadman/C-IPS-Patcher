@@ -1,5 +1,5 @@
 ips:
-	gcc -o ips main.c
+	gcc -g -o ips main.c
 
 clean:
 	rm ips
