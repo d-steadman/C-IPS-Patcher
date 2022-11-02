@@ -23,7 +23,7 @@
 
 // Hardcoded files for testing
 #define PATCH_FILE "test/starters.ips"
-#define OP_FILE "test/p.gba"
+#define OP_FILE "test/emerald.gba"
 #define PATCH_EOF 0x454f46
 
 #define SIZE_HEADER 5
@@ -65,15 +65,32 @@ void ips_read(uint8_t *buffer, size_t read_bytes, FILE *stream){
 /**
  *  ips_write - Wrapper for writing a normal data buffer to op file.
  */
-void ips_write(uint8_t *buffer, size_t write_bytes, FILE *stream){
+void ips_write(uint8_t *buffer, size_t write_bytes, uint32_t offset, FILE *stream){
+    size_t bytes_written = 0;
+
+    if (fseek(stream, offset, SEEK_SET) == -1)  // Seek to the correct file position
+        die_errno(errno, "fseek");
+
+    bytes_written = fwrite(buffer, sizeof(uint8_t), write_bytes, stream);
+    if (bytes_written != write_bytes)
+        die_errno(errno, "fwrite");
 
 }
 
 /**
  *  ips_rle - Repeatedly writes rle_byte to op file.
  */
-void ips_rle(size_t write_bytes, uint8_t rle_byte, FILE *stream){
+void ips_rle(uint8_t rle_byte, size_t write_bytes, uint32_t offset, FILE *stream){
+    size_t bytes_written = 0;
 
+    if (fseek(stream, offset, SEEK_SET) == -1)  // Seek to the correct file position
+        die_errno(errno, "fseek");
+
+    while (bytes_written < write_bytes){
+        bytes_written += fwrite(&rle_byte, sizeof(uint8_t), 1, stream);
+    }
+
+    printf("Bytes written: %zu\n", bytes_written);
 }
 
 
@@ -95,7 +112,7 @@ int main(){
     if (patch == NULL)
         die_errno(errno, "fopen");
 
-    op = fopen(OP_FILE, "wb");
+    op = fopen(OP_FILE, "ab");
     if (op == NULL)
         die_errno(errno, "fopen");
 
@@ -118,7 +135,7 @@ int main(){
             ips_read(data, uint_size(size), patch);   // Read in data
 
             printf("Normal patch -> offset: %X, size: %d\n", uint_offset(offset), uint_size(size));
-            ips_write(data, uint_size(size), op);
+            ips_write(data, uint_size(size), uint_offset(offset), op);
 
         /* RLE patch */
         } else {
@@ -126,7 +143,7 @@ int main(){
             ips_read(&rle_byte, 1, patch);  // Repeat byte
 
             printf("RLE patch -> offset: %X, size: %d, RLE byte: %X\n", uint_offset(offset), uint_size(size), rle_byte);
-            ips_rle(uint_size(size), rle_byte, op);
+            ips_rle(rle_byte, uint_size(size), uint_offset(offset), op);
         }
         ips_read(offset, SIZE_OFFSET, patch);    // Like before, read offset to determine EOF
     }
