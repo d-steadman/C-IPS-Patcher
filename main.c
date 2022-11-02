@@ -148,5 +148,7 @@ int main(){
         ips_read(offset, SIZE_OFFSET, patch);    // Like before, read offset to determine EOF
     }
 
+    free(data);
+
     return 0;
 }
