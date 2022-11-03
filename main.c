@@ -3,7 +3,10 @@
  * https://zerosoft.zophar.net/ips.php
  */
 
+#define _GNU_SOURCE
+
 #include <errno.h>
+#include <getopt.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,14 +24,21 @@
         exit(1); \
     } while (0)
 
-// Hardcoded files for testing
-#define PATCH_FILE "test/starters.ips"
-#define OP_FILE "test/emerald.gba"
 #define PATCH_EOF 0x454f46
-
 #define SIZE_HEADER 5
 #define SIZE_OFFSET 3
 #define SIZE_SIZE 2
+
+#define USAGE  \
+    "Usage: ips [-h] [-c MODIFIED] PATCH ROM\n" \
+    "\n" \
+    "Patches a game ROM with a specified IPS patch.\n" \
+    "\n" \
+    "Optional arguments\n" \
+    "   -h, --help\n" \
+    "       Show usage statement and exit.\n" \
+    "   -c --create\n" \
+    "       Create a patch with name PATCH which patches ROM to create MODIFIED.\n"
 
 /**
  *  uint_size - convert the two-byte size buffer to a uint.
@@ -94,7 +104,54 @@ void ips_rle(uint8_t rle_byte, size_t write_bytes, uint32_t offset, FILE *stream
 }
 
 
-int main(){
+int main(int argc, char **argv){
+    /* Parsing commandline arguments */
+    char *patch_filename, *rom_filename;
+
+    int opt;
+    const char *short_opts = ":hic:";
+    struct option long_opts[] = {
+            {"help", no_argument, NULL, 'h'},
+            {"create", required_argument, NULL, 'c'},
+            {NULL, 0, NULL, 0}
+    };
+
+    while (1) {
+        opt = getopt_long(argc, argv, short_opts, long_opts, NULL);
+        if (opt == -1)
+            break;
+
+        switch (opt) {
+            case 'h': /* Usage */
+                printf(USAGE);
+                exit(0);
+                break;
+
+            case 'c': /* Create patch */
+                printf("Create patch not implemented at this time");
+                exit(0);
+                break;
+
+            case '?': /* Unknown option */
+                die("unknown option '%c'", optopt);
+                break;
+
+            case ':': /* Missing required argument */
+                die("missing option argument for option %c", optopt);
+                break;
+
+            default:
+                die("unexpected getopt_long return value: %c\n", (char)opt);
+        }
+    }
+
+    if (argc - optind != 2)
+        die("expected two positional arguments, but found %d", argc - optind);
+
+    patch_filename = argv[optind];
+    rom_filename = argv[optind + 1];
+
+    /* Patching the ROM file */
     uint8_t header[5];
     uint8_t *offset = header; // Offset of the file to place patch bytes
     uint8_t *size = &header[3];   // Number of patch bytes to read
@@ -106,14 +163,14 @@ int main(){
 
     uint8_t rle_byte = 0;
     FILE *patch;
-    FILE *op;       // File we will patch
+    FILE *rom;       // File we will patch
 
-    patch = fopen(PATCH_FILE, "rb");
+    patch = fopen(patch_filename, "rb");
     if (patch == NULL)
         die_errno(errno, "fopen");
 
-    op = fopen(OP_FILE, "ab");
-    if (op == NULL)
+    rom = fopen(rom_filename, "ab");
+    if (rom == NULL)
         die_errno(errno, "fopen");
 
     /* Verify the patch header. The first 5 bytes of the file must be "PATCH" or 50 41 54 43 48 (hex) */
@@ -134,21 +191,18 @@ int main(){
         if (uint_size(size) > 0){
             ips_read(data, uint_size(size), patch);   // Read in data
 
-            printf("Normal patch -> offset: %X, size: %d\n", uint_offset(offset), uint_size(size));
-            ips_write(data, uint_size(size), uint_offset(offset), op);
+            ips_write(data, uint_size(size), uint_offset(offset), rom);
 
         /* RLE patch */
         } else {
             ips_read(size, SIZE_SIZE, patch);  // Read in repeat number, reuse size for readability
             ips_read(&rle_byte, 1, patch);  // Repeat byte
 
-            printf("RLE patch -> offset: %X, size: %d, RLE byte: %X\n", uint_offset(offset), uint_size(size), rle_byte);
-            ips_rle(rle_byte, uint_size(size), uint_offset(offset), op);
+            ips_rle(rle_byte, uint_size(size), uint_offset(offset), rom);
         }
         ips_read(offset, SIZE_OFFSET, patch);    // Like before, read offset to determine EOF
     }
 
     free(data);
-
     return 0;
 }
